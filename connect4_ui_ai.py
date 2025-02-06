@@ -16,6 +16,16 @@ POP = 2
 PLAYER_COLOR = connect4.RED
 AI_COLOR = connect4.YELLOW
 
+def is_move_valid(gameState: connect4.GameState, move: int, column: int) -> bool:
+    if move == DROP:
+        for i in range(connect4.rows(gameState) - 1, -1, -1):
+            if gameState.board[column - 1][i] == connect4.EMPTY:
+                return True
+    elif move == POP:
+        return gameState.board[column - 1][0] == gameState.turn
+
+    return False
+
 def get_single_score(winnerResult: int) -> int:
     if winnerResult == PLAYER_COLOR:
         return -1
@@ -29,28 +39,21 @@ def get_win_score(gameState: connect4.GameState) -> int:
 def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int, column: int) -> int:
     """Returns 'score' of chosen move"""
     
-    if movesRemaining == 0:
-        return get_win_score(gameState)
+    if not is_move_valid(gameState, DROP, column):
+        return 0
+    
+    if connect4.winner(gameState) != connect4.EMPTY or movesRemaining == 0:
+        return get_win_score(gameState) * movesRemaining ** movesRemaining
     
     if move == DROP:
-        try:
-            newGameState = connect4.drop(gameState, column)
-            gameState = newGameState
-        except connect4.GameOverError:
-            return get_win_score(gameState)
-        except connect4.InvalidMoveError:
-            return -1000
-        except ValueError:
-            return -1000
+        newGameState = connect4.drop(gameState, column - 1)
+        gameState = newGameState
     
     column = 1
-    max_score = 0
+    total_score = 0
     for col in range(1, connect4.columns(gameState) + 1):
-        score = simulate_move(gameState, DROP, movesRemaining - 1, col)
-        if score > max_score:
-            max_score = score
-            column = col
-    return get_win_score(gameState) + simulate_move(gameState, DROP, movesRemaining - 1, column)
+        total_score += simulate_move(gameState, DROP, movesRemaining - 1, col)
+    return total_score
 
 # New function
 def ai_move(gameState: connect4.GameState) -> tuple[int, int]:
@@ -66,9 +69,11 @@ def ai_move(gameState: connect4.GameState) -> tuple[int, int]:
     """
     
     column = random.randint(1, connect4.columns(gameState)) 
-    max_score = 0
+    max_score = -100000000
     for col in range(1, connect4.columns(gameState) + 1):
-        score = simulate_move(gameState, DROP, 5, col)
+        if not is_move_valid(gameState, DROP, col):
+            continue
+        score = simulate_move(gameState, DROP, 4, col)
         print(f"Column {col}'s score: {score}")
         if score > max_score:
             max_score = score
