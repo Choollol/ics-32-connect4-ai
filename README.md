@@ -1,2 +1,2 @@
-# ics-32-connect4-ai
-Connect 4 "AI" for UCI ICS32 class
+# ics-32-connect4-bot
+Connect 4 bot for my UCI ICS32 class
