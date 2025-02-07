@@ -15,9 +15,6 @@ from collections import deque
 DROP = 1
 POP = 2
 
-PLAYER_COLOR = connect4.RED
-AI_COLOR = connect4.YELLOW
-
 LOOKAHEAD_MOVE_THRESHOLDS = [(8, 5), (12, 4), (20, 3)]
 DEFAULT_MAX_SCORE = -1000000000
 
@@ -59,7 +56,8 @@ def faster_win_check(game_state: connect4.GameState, columnCount: int, rowCount:
 
     for col in range(columnCount):
         for row in range(rowCount):
-            if game_state.board[col][row] != connect4.EMPTY and _winning_sequence_begins_at(game_state.board, col, row, columnCount, rowCount):
+            if game_state.board[col][row] != connect4.EMPTY and \
+                    _winning_sequence_begins_at(game_state.board, col, row, columnCount, rowCount):
                 if winner == connect4.EMPTY:
                     winner = game_state.board[col][row]
                 elif winner != game_state.board[col][row]:
@@ -84,18 +82,15 @@ def is_move_valid(gameState: connect4.GameState, move: int, column: int) -> bool
     return False
 
 
-def get_single_score(winnerResult: int) -> int:
-    if winnerResult == PLAYER_COLOR:
+def get_single_score(winnerResult: int, ai_color, other_color) -> int:
+    if winnerResult == other_color:
         return -1
-    if winnerResult == AI_COLOR:
+    if winnerResult == ai_color:
         return 1
     return 0
 
 
-def get_win_score(gameState: connect4.GameState) -> int:
-    return get_single_score(connect4.winner(gameState))
-
-def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int, column: int, lookaheadRange) -> int:
+def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int, column: int, lookaheadRange, ai_color, other_color) -> int:
     """Returns 'score' of chosen move"""
     
     column_count = connect4.columns(gameState)
@@ -112,7 +107,7 @@ def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int,
         #if connect4.winner(front[0]) != connect4.EMPTY:
         if faster_win_check(front[0], column_count, row_count) != connect4.EMPTY:
             #total_score += get_win_score(front[0]) * front[2] ** front[2]
-            total_score += get_single_score(connect4.winner(front[0])) * front[2] ** 2
+            total_score += get_single_score(connect4.winner(front[0]), ai_color, other_color) * front[2] ** 2
             continue
         if front[1] == DROP:
             if not is_move_valid(front[0], DROP, front[3]):
@@ -125,6 +120,7 @@ def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int,
     return total_score
             
 
+    # Recursive
     """ if not is_move_valid(gameState, DROP, column):
         return 0
 
@@ -141,13 +137,16 @@ def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int,
         total_score += simulate_move(gameState, DROP, movesRemaining - 1, col)
     return total_score """
 
-def simulate_move_helper(gameState: connect4.GameState, move: int, movesRemaining: int, column: int, lookaheadRange, scores) -> None:
-    scores[column] = simulate_move(
-        gameState, move, movesRemaining, column, lookaheadRange)
 
-def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_moves: int, lookaheadRangeLeft: int, lookaheadRangeRight: int) -> tuple[int, int]:
+def simulate_move_helper(gameState: connect4.GameState, move: int, movesRemaining: int, column: int, lookaheadRange, scores, ai_color, other_color) -> None:
+    scores[column] = simulate_move(
+        gameState, move, movesRemaining, column, lookaheadRange, ai_color, other_color)
+
+
+def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_moves: int, lookaheadRangeLeft: int, lookaheadRangeRight: int, ai_color, other_color) -> tuple[int, int]:
     max_score = DEFAULT_MAX_SCORE
     
+    # Start threads
     manager = multiprocessing.Manager()
     scores = manager.dict()
     processes: list[multiprocessing.Process] = []
@@ -155,19 +154,19 @@ def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_
         if not is_move_valid(gameState, DROP, col):
             continue
         process = multiprocessing.Process(target=simulate_move_helper, args=(
-            gameState, DROP, lookahead_moves, col, lookaheadRange, scores))
+            gameState, DROP, lookahead_moves, col, lookaheadRange, scores, ai_color, other_color))
         process.start()
         processes.append(process)
 
+    # Wait for threads to finish
     for process in processes:
         process.join()
 
-    possible_columns = [random.randint(lookaheadRangeLeft + LOOKAHEAD_EDGE_RADIUS,
-                                       lookaheadRangeRight - LOOKAHEAD_EDGE_RADIUS + 1)]
-    
+    # Find columns with max score
+    possible_columns = [random.randint(lookaheadRangeLeft, lookaheadRangeRight)]
     found_nonzero_score = False
     for col, score in scores.items():
-        print(F"Column {col}'s score: {score}")
+        # print(F"Column {col}'s score: {score}")
         if score != 0:
             found_nonzero_score = True
         if score > max_score:
@@ -178,16 +177,17 @@ def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_
         elif score == max_score:
             possible_columns.append(col)
     
+    # Pick column
     possible_columns.sort()
     column = possible_columns[len(possible_columns) // 2]
 
     if not found_nonzero_score:
-        column = random.randint(lookaheadRangeLeft, lookaheadRangeRight + 1)
+        column = random.randrange(lookaheadRangeLeft, lookaheadRangeRight + 1)
         
     return (DROP, column)
 
 
-def singlethreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_moves: int, lookaheadRangeLeft: int, lookaheadRangeRight: int) -> tuple[int, int]:
+def singlethreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_moves: int, lookaheadRangeLeft: int, lookaheadRangeRight: int, ai_color, other_color) -> tuple[int, int]:
     max_score = DEFAULT_MAX_SCORE
     
     possible_columns = [random.randint(lookaheadRangeLeft + LOOKAHEAD_EDGE_RADIUS,
@@ -198,8 +198,8 @@ def singlethreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead
         if not is_move_valid(gameState, DROP, col):
             continue
         score = simulate_move(
-            gameState, DROP, lookahead_moves, col, lookaheadRange)
-        print(f"Column {col}'s score: {score}")
+            gameState, DROP, lookahead_moves, col, lookaheadRange, ai_color, other_color)
+        # print(f"Column {col}'s score: {score}")
         if score != 0:
             found_nonzero_score = True
         if score > max_score:
@@ -213,7 +213,7 @@ def singlethreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead
     column = possible_columns[len(possible_columns) // 2]
     
     if not found_nonzero_score:
-        column = random.randint(lookaheadRangeLeft + LOOKAHEAD_EDGE_RADIUS,
+        column = random.randrange(lookaheadRangeLeft + LOOKAHEAD_EDGE_RADIUS,
                                 lookaheadRangeRight - LOOKAHEAD_EDGE_RADIUS + 1)
     
     return (DROP, column)
@@ -229,6 +229,9 @@ def ai_move(gameState: connect4.GameState) -> tuple[int, int]:
     column = random.randint(1, connect4.columns(gameState)) 
     return (move, column)
     """
+
+    ai_color = gameState.turn
+    other_color = _opposite_turn(ai_color)
 
     column_count = connect4.columns(gameState)
 
@@ -256,7 +259,6 @@ def ai_move(gameState: connect4.GameState) -> tuple[int, int]:
             lookahead_moves = pair[1]
             break """
     
-    # Set lookahead moves to 3 because apparently that's all it needs
     lookahead_moves = 3
-    return multithreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight)
-    #return singlethreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight)
+    return multithreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight, ai_color, other_color)
+    # return singlethreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight, ai_color, other_color)

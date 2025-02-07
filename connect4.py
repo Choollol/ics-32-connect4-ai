@@ -306,7 +306,7 @@ def _four_in_a_row(board: list[list[int]], col: int, row: int, coldelta: int, ro
 def _require_valid_column_number(column_number: int, board: list[list[int]]) -> None:
     '''Raises a ValueError if its parameter is not a valid column number'''
     if type(column_number) != int or not _is_valid_column_number(column_number, board):
-        raise ValueError(f'column_number must be an int between 0 and {_board_columns(board) - 1}')
+        raise ValueError(f'column_number must be an int between 0 and {_board_columns(board) - 1}. Given column number: {column_number}')
 
 
 

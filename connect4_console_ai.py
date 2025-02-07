@@ -11,7 +11,7 @@ import connect4_ui
 import connect4_ui_ai
 
 
-
+PLAYER_COLOR = connect4.RED
 
 def run_console_ui() -> None:
     gameState = connect4_ui.make_new_game()
@@ -21,7 +21,7 @@ def run_console_ui() -> None:
     game_ended = False
 
     while not game_ended:
-        if gameState.turn == connect4_ui_ai.PLAYER_COLOR:
+        if gameState.turn == PLAYER_COLOR:
             move_info = connect4_ui.choose_move(gameState)
         else:
             move_info = connect4_ui_ai.ai_move(gameState)
