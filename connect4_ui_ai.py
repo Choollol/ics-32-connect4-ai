@@ -15,10 +15,13 @@ from collections import deque
 DROP = 1
 POP = 2
 
-LOOKAHEAD_MOVE_THRESHOLDS = [(8, 5), (12, 4), (20, 3)]
+LOOKAHEAD_MOVE_THRESHOLDS = [(7, 6), (10, 5), (14, 4), (20, 3)]
 DEFAULT_MAX_SCORE = -1000000000
 
 LOOKAHEAD_EDGE_RADIUS = 2
+
+WIN_BASE_SCORE = 1
+LOSE_BASE_SCORE = -1
 
 
 def _find_bottom_empty_row_in_column(board: list[list[int]], column_number: int, row_count: int) -> int:
@@ -28,7 +31,9 @@ def _find_bottom_empty_row_in_column(board: list[list[int]], column_number: int,
 
     return -1
 
+
 def faster_drop(game_state: connect4.GameState, column_number: int, row_count: int) -> connect4.GameState:
+    """column is 0-indexed"""
     empty_row = _find_bottom_empty_row_in_column(
         game_state.board, column_number, row_count)
 
@@ -92,7 +97,7 @@ def faster_win_check(game_state: connect4.GameState, columnCount: int, rowCount:
 
 
 def is_move_valid(gameState: connect4.GameState, move: int, column: int) -> bool:
-    """Column is 1-indexed"""
+    """column is 1-indexed"""
     if move == DROP:
         for i in range(connect4.rows(gameState) - 1, -1, -1):
             if gameState.board[column - 1][i] == connect4.EMPTY:
@@ -103,11 +108,11 @@ def is_move_valid(gameState: connect4.GameState, move: int, column: int) -> bool
     return False
 
 
-def get_single_score(winnerResult: int, ai_color, other_color) -> int:
+def get_single_score(winnerResult: int, ai_color: int, other_color: int) -> int:
     if winnerResult == other_color:
-        return -1
+        return LOSE_BASE_SCORE
     if winnerResult == ai_color:
-        return 1
+        return WIN_BASE_SCORE
     return 0
 
 
@@ -116,48 +121,31 @@ def simulate_move(gameState: connect4.GameState, move: int, movesRemaining: int,
 
     column_count = connect4.columns(gameState)
     row_count = connect4.rows(gameState)
+    lookahead_len = len(lookaheadRange)
 
     total_score = 0
 
     queue: deque[tuple] = deque()
 
+    # [0] = gameState | [1] = move type | [2] = moves remaining | [3] chosen column
     queue.append((gameState, move, movesRemaining, column))
 
     while queue:
         front = queue.popleft()
-        # if connect4.winner(front[0]) != connect4.EMPTY:
-        if faster_win_check(front[0], column_count, row_count) != connect4.EMPTY:
-            # total_score += get_win_score(front[0]) * front[2] ** front[2]
-            total_score += get_single_score(connect4.winner(
-                front[0]), ai_color, other_color) * front[2] ** 2
+        winner = faster_win_check(front[0], column_count, row_count)
+        if winner != connect4.EMPTY:
+            score_weight = lookahead_len ** (front[2])
+            total_score += get_single_score(winner, ai_color, other_color) * score_weight
             continue
         if front[1] == DROP:
             if not is_move_valid(front[0], DROP, front[3]):
                 continue
-            #newGameState = connect4.drop(front[0], front[3] - 1)
             newGameState = faster_drop(front[0], front[3] - 1, row_count)
-        if front[2] >= 1:
+        if front[2] > 1:
             for col in lookaheadRange:
                 queue.append((newGameState, DROP, front[2] - 1, col))
 
     return total_score
-
-    # Recursive
-    """ if not is_move_valid(gameState, DROP, column):
-        return 0
-
-    if connect4.winner(gameState) != connect4.EMPTY or movesRemaining == 0:
-        return get_win_score(gameState) * movesRemaining ** movesRemaining
-
-    if move == DROP:
-        newGameState = connect4.drop(gameState, column - 1)
-        gameState = newGameState
-
-    column = 1
-    total_score = 0
-    for col in range(1, connect4.columns(gameState) + 1):
-        total_score += simulate_move(gameState, DROP, movesRemaining - 1, col)
-    return total_score """
 
 
 def simulate_move_helper(gameState: connect4.GameState, move: int, movesRemaining: int, column: int, lookaheadRange, scores, ai_color, other_color) -> None:
@@ -199,6 +187,13 @@ def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_
         elif score == max_score:
             possible_columns.append(col)
 
+    # If cannot drop, then pop first available column
+    if len(possible_columns) == 0:
+        column = 0
+        while not is_move_valid(gameState, POP, column):
+            column += 1
+        return (POP, column)
+
     # Pick column
     possible_columns.sort()
     column = possible_columns[len(possible_columns) // 2]
@@ -206,6 +201,7 @@ def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_
     if not found_nonzero_score:
         column = random.randrange(lookaheadRangeLeft, lookaheadRangeRight + 1)
 
+    # print(f"Chosen column: {column}")
     return (DROP, column)
 
 
@@ -280,7 +276,6 @@ def ai_move(gameState: connect4.GameState) -> tuple[int, int]:
             lookahead_moves = pair[1]
             break
 
-    print(lookahead_moves)
     #lookahead_moves = 3
     return multithreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight, ai_color, other_color)
     # return singlethreaded_move(gameState, lookaheadRange, lookahead_moves, lookaheadRangeLeft, lookaheadRangeRight, ai_color, other_color)
