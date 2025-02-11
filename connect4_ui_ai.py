@@ -196,7 +196,11 @@ def multithreaded_move(gameState: connect4.GameState, lookaheadRange, lookahead_
 
     # Pick column
     possible_columns.sort()
-    column = possible_columns[len(possible_columns) // 2]
+    possible_column_count = len(possible_columns)
+    if possible_column_count > 1:
+        column = possible_columns[random.randrange(possible_column_count // 2 - 1, possible_column_count // 2 + 1)]
+    else:
+        column = possible_columns[0]
 
     if not found_nonzero_score:
         column = random.randrange(lookaheadRangeLeft, lookaheadRangeRight + 1)
